@@ -1,4 +1,4 @@
-use std::{io::{Read, Write}, net::{TcpListener, TcpStream}, thread};
+use std::{fs::File, io::{Read, Write}, net::{TcpListener, TcpStream}, thread, env};
 
 fn handle_request(mut stream: TcpStream) {
     let mut buffer = [0;1024];
@@ -8,8 +8,36 @@ fn handle_request(mut stream: TcpStream) {
     
     let splitted_route = route.split('/').collect::<Vec<&str>>();
     let first_param = splitted_route[1];
+
+    let args: Vec<String> = env::args().collect();
+    let index_directory_arg = args.iter().position(|x| x.contains("--directory"));
+    let mut directory_path = "/";
+    match index_directory_arg {
+        Some(index_directory_arg) => directory_path = &args[index_directory_arg+1],
+        None => {}
+    }
+
     match first_param {
         "" => stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap(),
+        "files" => {
+            let filename = splitted_route[2];
+            if filename == ""  {
+                stream.write_all(b"HTTP/1.1 404 OK\r\n\r\n").unwrap();
+                return;
+            }
+            let file = File::open(format!("{directory_path}/{filename}"));
+            match file {
+                Ok(mut file) => {
+                    let mut contents = String::new();
+                    let _ = file.read_to_string(&mut contents);
+                    stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n{}\r\n\r\n",contents.len(), contents).as_bytes()).unwrap();
+
+                },
+                Err(_) => {
+                    stream.write_all(b"HTTP/1.1 404 OK\r\n\r\n").unwrap();
+                }
+            }
+        },
         "user-agent" => {
             let user_agent_line = request.split("\r\n").filter(|&x| x.contains("User-Agent")).collect::<Vec<&str>>()[0];
             let user_agent = user_agent_line.split(": ").collect::<Vec<&str>>()[1];                   
